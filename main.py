@@ -20,8 +20,8 @@ selected = None
 possibleTurns = []
 
 canvas = Canvas(root, width=CellSize * boardSize, height=CellSize * boardSize)
-board = []
-checkers = []
+Board = []
+
 images = [PhotoImage(file="res\\1b.gif"), PhotoImage(file="res\\1h.gif"), PhotoImage(file="res\\1bk.gif"),
           PhotoImage(file="res\\1hk.gif")]
 color = {
@@ -30,37 +30,40 @@ color = {
     "whiteSelected": "#A08FBA",
     "blackSelected": "#5E546D"
 }
-cell_colors = [color["black"], color["white"]]
+cell_colors = [color["white"], color["black"]]
 
 
 class Checker:
-    def __init__(self, x, y, team, king=False):
-        self.x = x
-        self.y = y
+    def __init__(self, team, king=False):
         self.team = team
         self.king = king
-        if self.team == 0:
-            self.image = canvas.create_image(x * CellSize, y * CellSize, anchor=NW, image=images[0])
-        elif self.team == 1:
-            self.image = canvas.create_image(x * CellSize, y * CellSize, anchor=NW, image=images[1])
 
 
 def init():
     for row in range(boardSize):
-        board.append([])
         for col in range(boardSize):
             x1, y1 = col * CellSize, row * CellSize
             x2, y2 = col * CellSize + CellSize, row * CellSize + CellSize
-            board.append(canvas.create_rectangle((x1, y1), (x2, y2), fill=cell_colors[(col + row) % 2], width=0))
-    # checkers
-    global checkers
-    checkers = [Checker(0, 0, False), Checker(2, 0, False), Checker(4, 0, False), Checker(6, 0, False),
-                Checker(1, 1, False), Checker(3, 1, False), Checker(5, 1, False), Checker(7, 1, False),
-                Checker(0, 2, False), Checker(2, 2, False), Checker(4, 2, False), Checker(6, 2, False),
-                Checker(1, 5, True), Checker(3, 5, True), Checker(5, 5, True), Checker(7, 5, True), Checker(0, 6, True),
-                Checker(2, 6, True), Checker(4, 6, True), Checker(6, 6, True), Checker(1, 7, True), Checker(3, 7, True),
-                Checker(5, 7, True), Checker(7, 7, True)]
-
+            canvas.create_rectangle((x1, y1), (x2, y2), fill=cell_colors[(col + row) % 2], width=0)
+    # global matrix
+    global Board
+    Board = [
+        [None, Checker(True), None, Checker(True), None, Checker(True), None, Checker(True)],
+        [Checker(True), None, Checker(True), None, Checker(True), None, Checker(True), None],
+        [None, Checker(True), None, Checker(True), None, Checker(True), None, Checker(True)],
+        [None, None, None, None, None, None, None, None],
+        [None, None, None, None, None, None, None, None],
+        [Checker(False), None, Checker(False), None, Checker(False), None, Checker(False), None],
+        [None, Checker(False), None, Checker(False), None, Checker(False), None, Checker(False)],
+        [Checker(False), None, Checker(False), None, Checker(False), None, Checker(False), None]
+    ]
+    global Images # TODO: save created images somehow
+    for i in range(boardSize):
+        for j in range(boardSize):
+            if Board[i][j] != None and Board[i][j].team == True:
+                Board[i][j].image = canvas.create_image(j * CellSize, i * CellSize, anchor=NW, image=images[0])
+            elif Board[i][j] != None and Board[i][j].team == False:
+                Board[i][j].image = canvas.create_image(j * CellSize, i * CellSize, anchor=NW, image=images[1])
 
 def motion(event):
     global xmouse
@@ -68,34 +71,33 @@ def motion(event):
     xmouse, ymouse = event.x, event.y
 
 
-def valid(checker, x, y):
+def valid(checker, x1, y1, x2, y2):
     if checker == None:
         return False
     # checking if the place is occupied
-    for i in checkers:
-        if i.x == x and i.y == y:
-            return False
+    if Board[y2][x2] != None:
+        return False
     # checking if the coords are out of bounds
-    if x < 0 or x >= boardSize or y < 0 or y >= boardSize:
+    if x2 < 0 or x2 >= boardSize or y2 < 0 or y2 >= boardSize:
         return False
     # checking if the movement is in diagonal lines
-    if abs(checker.x - x) != abs(checker.y - y):
+    if abs(x1 - x2) != abs(y1 - y2):
         return False
-    # checking if the checker has to attack
-    for i in checkers:
-        if abs(i.x - checker.x) != 1 or abs(i.y - checker.y) != 1 or checker.team == i.team:
-            return False
+    # checking if the player's turn is longer than 1
+    if abs(x2 - x1) > 1 and abs(y2 - y1) > 1:
+        # case 1: the checker is a king and there are no checkers between it and its destination
+        return False
     # else the move is valid
     return True
 
 
-def returnPossibleTurns(checker):
+def returnPossibleTurns(checker, x, y):
     arr = []
     for i in range(boardSize):
         for j in range(boardSize):
-            if abs(checker.x - i) and abs(checker.y - j) and valid(checker, i, j):
-                print(i, j)
-                arr.append(i + j * boardSize + 1)
+            if valid(checker, x, y, j, i):
+                # print(i, j)
+                arr.append(j + i * boardSize + 1)
     return arr
 
 
@@ -105,26 +107,22 @@ def lclick(event):
     global sCellY
     global selected
     global possibleTurns
+    global Board
     n = (xmouse // CellSize) + 1 + (boardSize * (ymouse // CellSize))
     canvas.itemconfig(sCell,
-                      fill=color["white"] if (sCellY // CellSize + sCellX // CellSize + 1) % 2 == 0 else color["black"])
+                      fill=color["black"] if (sCellY + sCellX + 1) % 2 == 0 else color["white"])
     prevx, prevy = sCellX, sCellY
     sCell = n
-    sCellX = xmouse
-    sCellY = ymouse
+    sCellX = xmouse // CellSize
+    sCellY = ymouse // CellSize
     canvas.itemconfig(sCell,
-                      fill=color["whiteSelected"] if (ymouse // CellSize + xmouse // CellSize + 1) % 2 == 0 else color[
-                          "blackSelected"])
-    selected = None
-    for i in checkers:
-        if i.x == sCellX // CellSize and i.y == sCellY // CellSize:
-            selected = i
+                      fill=color["blackSelected"] if (ymouse // CellSize + xmouse // CellSize + 1) % 2 == 0 else color[
+                          "whiteSelected"])
+    selected = Board[sCellY][sCellX]
     # highlighting of all possible moves
-    if selected == None:
-        return
     for i in possibleTurns:
         canvas.itemconfig(i, fill=color["black"])
-    possibleTurns = returnPossibleTurns(selected)
+    possibleTurns = returnPossibleTurns(selected, sCellX, sCellY)
     for i in possibleTurns:
         canvas.itemconfig(i, fill = color["blackSelected"])
 
@@ -134,21 +132,25 @@ def rclick(event):
     global targety
     global xmouse
     global ymouse
+    global sCellX
+    global sCellY
     targetx = xmouse // CellSize
     targety = ymouse // CellSize
     if selected == None: return
-    if valid(selected, targetx, targety):
-        move(selected, targetx - selected.x, targety - selected.y)
+    if valid(selected, sCellX, sCellY, targetx, targety):
+        move(selected, sCellX, sCellY, targetx, targety)
 
 
-def move(checker, deltax, deltay):
+def move(checker, startX, startY, endX, endY):
     global selected
+    global Board
     selected = None
     for i in range(CellSize // 4):
         root.after(1)
-        canvas.move(checker.image, deltax * 4, deltay * 4)
+        canvas.move(checker.image, (endX - startX) * 4, (endY - startY) * 4)
         root.update()
-    checker.x, checker.y = checker.x + deltax, checker.y + deltay
+    Board[endY][endX] = Board[startY][startX]
+    Board[startY][startX] = None
 
 
 canvas.pack()
