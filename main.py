@@ -5,6 +5,8 @@ import time
 
 root = Tk()
 
+WHITE = True;
+BLACK = False
 xmouse = 0
 ymouse = 0
 sCell = 0
@@ -33,6 +35,10 @@ color = {
 cell_colors = [color["white"], color["black"]]
 
 
+def clamp(num, min_value, max_value):
+    return max(min(num, max_value), min_value)
+
+
 class Checker:
     def __init__(self, team, king=False):
         self.team = team
@@ -44,26 +50,43 @@ def init():
         for col in range(boardSize):
             x1, y1 = col * CellSize, row * CellSize
             x2, y2 = col * CellSize + CellSize, row * CellSize + CellSize
-            canvas.create_rectangle((x1, y1), (x2, y2), fill=cell_colors[(col + row) % 2], width=0)
+            canvas.create_rectangle((x1, y1), (x2, y2), fill=cell_colors[(col + row) % 2], width=0, tags='0')
     # global matrix
     global Board
+    """
     Board = [
-        [None, Checker(True), None, Checker(True), None, Checker(True), None, Checker(True)],
-        [Checker(True), None, Checker(True), None, Checker(True), None, Checker(True), None],
-        [None, Checker(True), None, Checker(True), None, Checker(True), None, Checker(True)],
+        [None, None, None, None, None, None, None, None],
+        [None, None, None, None, None, None, Checker(BLACK), None],
         [None, None, None, None, None, None, None, None],
         [None, None, None, None, None, None, None, None],
-        [Checker(False), None, Checker(False), None, Checker(False), None, Checker(False), None],
-        [None, Checker(False), None, Checker(False), None, Checker(False), None, Checker(False)],
-        [Checker(False), None, Checker(False), None, Checker(False), None, Checker(False), None]
+        [None, None, None, None, None, None, None, None],
+        [None, None, None, None, None, None, None, None],
+        [None, Checker(WHITE), None, None, None, None, None, None],
+        [None, None, None, None, None, None, None, None]
     ]
-    global Images # TODO: save created images somehow
+    """
+    Board = [
+        [None, Checker(WHITE), None, Checker(WHITE), None, Checker(WHITE), None, Checker(WHITE)],
+        [Checker(WHITE), None, Checker(WHITE), None, Checker(WHITE), None, Checker(WHITE), None],
+        [None, Checker(WHITE), None, Checker(WHITE), None, Checker(WHITE), None, Checker(WHITE)],
+        [None, None, None, None, None, None, None, None],
+        [None, None, None, None, None, None, None, None],
+        [Checker(BLACK), None, Checker(BLACK), None, Checker(BLACK), None, Checker(BLACK), None],
+        [None, Checker(BLACK), None, Checker(BLACK), None, Checker(BLACK), None, Checker(BLACK)],
+        [Checker(BLACK), None, Checker(BLACK), None, Checker(BLACK), None, Checker(BLACK), None]
+    ]
+    global Images
     for i in range(boardSize):
         for j in range(boardSize):
-            if Board[i][j] != None and Board[i][j].team == True:
-                Board[i][j].image = canvas.create_image(j * CellSize, i * CellSize, anchor=NW, image=images[0])
-            elif Board[i][j] != None and Board[i][j].team == False:
-                Board[i][j].image = canvas.create_image(j * CellSize, i * CellSize, anchor=NW, image=images[1])
+            if Board[i][j] != None and Board[i][j].team == WHITE:
+                Board[i][j].image = canvas.create_image(j * CellSize, i * CellSize, anchor=NW, image=images[0],
+                                                        tags="t" + str(i) + str(j))
+                Board[i][j].tag = "t" + str(i) + str(j)
+            elif Board[i][j] != None and Board[i][j].team == BLACK:
+                Board[i][j].image = canvas.create_image(j * CellSize, i * CellSize, anchor=NW, image=images[1],
+                                                        tags="t" + str(i) + str(j))
+                Board[i][j].tag = "t" + str(i) + str(j)
+
 
 def motion(event):
     global xmouse
@@ -71,33 +94,58 @@ def motion(event):
     xmouse, ymouse = event.x, event.y
 
 
-def valid(checker, x1, y1, x2, y2):
-    if checker == None:
-        return False
-    # checking if the place is occupied
-    if Board[y2][x2] != None:
-        return False
-    # checking if the coords are out of bounds
-    if x2 < 0 or x2 >= boardSize or y2 < 0 or y2 >= boardSize:
-        return False
-    # checking if the movement is in diagonal lines
-    if abs(x1 - x2) != abs(y1 - y2):
-        return False
-    # checking if the player's turn is longer than 1
-    if abs(x2 - x1) > 1 and abs(y2 - y1) > 1:
-        # case 1: the checker is a king and there are no checkers between it and its destination
-        return False
-    # else the move is valid
-    return True
+def valid(checker, x, y):
+    global Board
+    arr = []
+    if checker == None: return False
+    for i in range(-1, 2, 2):
+        for j in range(-1, 2, 2):
+            if not checker.king and checker.team == WHITE:
+                if i == -1: break
+            elif not checker.king and checker.team == BLACK:
+                if i == 1: break
+            for k in range(1, boardSize if checker.king else 2):
+                try:
+                    t = Board[y + (k * i)][x + (k * j)]
+                except IndexError:
+                    break
+                if t != None:
+                    break
+                else:
+                    tt = (x + (k * j)) + (y + (k * i)) * boardSize + 1
+                    if (x + (k * j)) >= 0 and (x + (k * j)) < boardSize and (y + (k * i)) >= 0 and (y + (k * i)) < boardSize:
+                        arr.append(tt)
+    return arr
+
+
+def attack(checker, x, y):
+    global Board
+    arr = []
+    if checker == None: return False
+    for i in range(-1, 2, 2):
+        for j in range(-1, 2, 2):
+            checkerFound = False
+            for k in range(1, boardSize if checker.king else 3):
+                try:
+                    t = Board[y + (k * i)][x + (k * j)]
+                except IndexError:
+                    break
+                if t != None:
+                    if t.team == checker.team: break
+                    if checkerFound: break
+                    checkerFound = True
+                elif checkerFound:
+                    tt = (x + (k * j)) + (y + (k * i)) * boardSize + 1
+                    if (x + (k * j)) >= 0 and (x + (k * j)) < boardSize and (y + (k * i)) >= 0 and (y + (k * i)) < boardSize:
+                        arr.append(tt)
+    return arr
 
 
 def returnPossibleTurns(checker, x, y):
     arr = []
-    for i in range(boardSize):
-        for j in range(boardSize):
-            if valid(checker, x, y, j, i):
-                # print(i, j)
-                arr.append(j + i * boardSize + 1)
+    arr = attack(checker, x, y)
+    if len(arr) == 0:
+        arr = valid(checker, x, y)
     return arr
 
 
@@ -124,10 +172,11 @@ def lclick(event):
         canvas.itemconfig(i, fill=color["black"])
     possibleTurns = returnPossibleTurns(selected, sCellX, sCellY)
     for i in possibleTurns:
-        canvas.itemconfig(i, fill = color["blackSelected"])
+        canvas.itemconfig(i, fill=color["blackSelected"])
 
 
 def rclick(event):
+    global possibleTurns
     global targetx
     global targety
     global xmouse
@@ -137,13 +186,14 @@ def rclick(event):
     targetx = xmouse // CellSize
     targety = ymouse // CellSize
     if selected == None: return
-    if valid(selected, sCellX, sCellY, targetx, targety):
+    if (targetx + targety * boardSize + 1) in possibleTurns:
         move(selected, sCellX, sCellY, targetx, targety)
 
 
 def move(checker, startX, startY, endX, endY):
     global selected
     global Board
+    global possibleTurns
     selected = None
     for i in range(CellSize // 4):
         root.after(1)
@@ -151,6 +201,29 @@ def move(checker, startX, startY, endX, endY):
         root.update()
     Board[endY][endX] = Board[startY][startX]
     Board[startY][startX] = None
+    for i in possibleTurns:
+        canvas.itemconfig(i, fill=color["black"])
+
+    # dy, dx = clamp(endY - startY, -1, 1), clamp(endX - startX, -1, 1)
+    dy, dx = (endY - startY) // abs(endY - startY), (endX - startX) // abs(endX - startX)
+    i = 1
+    t1, t2 = startY + dy * i, startX + dx * i
+    while t1 != endY or t2 != endX:
+        t1, t2 = startY + dy * i, startX + dx * i
+        t = Board[t1][t2]
+        if t != None and t1 != endY and t2 != endX:
+            canvas.delete(t.tag)
+            Board[t1][t2] = None
+            root.update()
+            break
+        i += 1
+
+    # checking if the move was to the 0th or the 7th row
+    if ((endY == 0 and checker.team == BLACK) or (endY == 7 and checker.team == WHITE)) and checker.king == False:
+        Board[endY][endX].king = True
+        canvas.delete(Board[endY][endX].tag)
+        Board[endY][endX].image = canvas.create_image(endX * CellSize, endY * CellSize, anchor=NW,
+                                                      image=images[2] if Board[endY][endX].team == WHITE else images[3])
 
 
 canvas.pack()
