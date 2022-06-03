@@ -1,6 +1,5 @@
 # шашки -> бот ->графика питон? -> сервер для игры с ботом
 # ▮▯♟♙
-
 """
 Правила игры
 
@@ -21,37 +20,37 @@ import time
 from tkinter.messagebox import askyesno
 import random
 
-root = Tk()
+root = Tk() # root for tkinter
 
-xmouse = 0
-ymouse = 0
-selectedCell = 0
-targetCell = -1
-CellSize = 100
+selectedCell = 0 # index of the selected cell in matrix
+targetCell = -1 # index of the targeted cell in matrix
+CellSize = 100 # the size of a cell in pixels
 
-PlayWithABot = False
+PlayWithABot = False # determines whether black is a bot or a second player
 
-possibleTurns = []
+possibleMoves = [] # possible moves for the selected checker are stored here
 
-canvas = Canvas(root, width=CellSize * 8, height=CellSize * 8)
-Board = []
-checkers = {}
+depth = 3 # the amount of turns the bot plans ahead
+movesHistory = [] # previous turns are stored here. Up to [depth] elements
+
+canvas = Canvas(root, width=CellSize * 8, height=CellSize * 8) # the canvas from tkinter
+Board = [] # the main board matrix
+checkers = {} # references to the images of the checkers are stored here
 
 images = [PhotoImage(file="res\\1b.gif"), PhotoImage(file="res\\1h.gif"),
-              PhotoImage(file="res\\1bk.gif"), PhotoImage(file="res\\1hk.gif")]
+              PhotoImage(file="res\\1bk.gif"), PhotoImage(file="res\\1hk.gif")] # array with the 4 images used for checkers
 
-direction = [-9, -7, 7, 9]
+direction = [-9, -7, 7, 9] # the 4 directions: up right, up left, down right, down left
 
 color = {
     "white": "#d6bea9",
     "black": "#5E544B",
     "whiteSelected": "#A08FBA",  # the white selected color is actually useless
     "blackSelected": "#5E546D"
-}
-cell_colors = [color["white"], color["black"]]
+} # 4 colors used for tiles are stored here
+cell_colors = [color["white"], color["black"]] # only used in board init
 
 def SetTurns(n): # 0 none turn, 1 white turn, 2 black turn
-    global Board
     for i in range(64):
         if not Board[i] & 1: continue
         if Board[i] & 8:
@@ -59,7 +58,7 @@ def SetTurns(n): # 0 none turn, 1 white turn, 2 black turn
         if (n == 2 and Board[i] & 2) or (n == 1 and not Board[i] & 2):
             Board[i] += 8 # equals: Board[i] &= 0b01111
 
-cellsInit = False
+cellsInit = False # used to make sure that the tiles are only initiated once
 def init():
     global cellsInit
     global canvas
@@ -94,49 +93,67 @@ def init():
              0, 1, 0, 1, 0, 1, 0, 1,
              1, 0, 1, 0, 1, 0, 1, 0]
 
-    # deleting remaining checkers from the old game
-    for i in range(64):
-        canvas.delete("t" + str(i))
-        if Board[i] > 0:
-            checkers[i] = canvas.create_image((i % 8 + .5) * CellSize, (i // 8 + .5) * CellSize, anchor=CENTER, image=images[0 if Board[i] == 1 else 1], tag="t" + str(i))
+    syncVisuals()
 
-    root.update()
     SetTurns(1)
 
+def syncVisuals():
+    for i in range(64):
+        if i in checkers:
+            canvas.delete(checkers[i])
+            del checkers[i]
+        if Board[i] > 0:
+            if Board[i] & 2:
+                if Board[i] & 4: imageIndex = 3
+                else: imageIndex = 1
+            else:
+                if Board[i] & 4: imageIndex = 2
+                else: imageIndex = 0
+            checkers[i] = canvas.create_image((i % 8) * CellSize, (i // 8) * CellSize, anchor=NW, image=images[imageIndex])
 
-
-def motion(event):
-    global xmouse
-    global ymouse
-    xmouse, ymouse = event.x, event.y
-
+    root.update()
 
 def getDistInDir(x, dir):
-    count = 0
+    count = 1
     # only going on if the current tile is not on a border
-    while x > 7 and x < 56 and x != (x // 8) and x != (x // 8) - 1 and x != 63:
-        count += 1
-        x += dir
+    left, up, right, down = x % 8 != 0, x > 7, (x + 1) % 8 != 0, x < 56
+    if dir == -9:
+        while left and up:
+            count += 1
+            x += dir
+            left, up, right, down = x % 8 != 0, x > 7, (x + 1) % 8 != 0, x < 56
+    elif dir == -7:
+        while right and up:
+            count += 1
+            x += dir
+            left, up, right, down = x % 8 != 0, x > 7, (x + 1) % 8 != 0, x < 56
+    elif dir == 7:
+        while left and down:
+            count += 1
+            x += dir
+            left, up, right, down = x % 8 != 0, x > 7, (x + 1) % 8 != 0, x < 56
+    elif dir == 9:
+        while right and down:
+            count += 1
+            x += dir
+            left, up, right, down = x % 8 != 0, x > 7, (x + 1) % 8 != 0, x < 56
     return count
 
-
 def getNonAttacks(x):
-    global Board
     arr = []
-    if not Board[x] & 8: return arr
     for i in range(4):
 
         #restricting movement if the pawns
         if not Board[x] & 4 and Board[x] & 2: # black
-            if i < 2: break # restricting the moving direction to down
+            if i < 2: continue # restricting the moving direction to down
         elif not Board[x] & 4 and not Board[x] & 2: # white
-            if i > 1: break # restricting the moving direction to up
+            if i > 1: continue # restricting the moving direction to up
 
         for k in range(getDistInDir(x, direction[i])):
             target = Board[x + k * direction[i]]
 
             if target == 0:
-                arr.append(x + k * direction[i] + 1)
+                arr.append(x + k * direction[i])
             elif k > 0:
                 break # hit some checker, movement in this direction not possible, changing direction
 
@@ -144,11 +161,8 @@ def getNonAttacks(x):
                 break
     return arr
 
-
 def getAttacks(x):
-    global Board
     arr = []
-    if not Board[x] & 8: return arr
     for i in range(4):
         checkerFound = False
         for k in range(getDistInDir(x, direction[i])):
@@ -157,68 +171,53 @@ def getAttacks(x):
                 if ((target & 2) == (Board[x] & 2)) or checkerFound: break
                 checkerFound = True
             elif checkerFound:
-                arr.append(x + k * direction[i] + 1)
+                arr.append(x + k * direction[i])
 
             if (not Board[x] & 4 and k == 2):  # exiting the loop if the checker is not a king
                 break
     return arr
 
-
 def getMoves(x):
-    global Board
 
     arr = []
-    if not Board[x] & 8:
-        return arr
+    if not Board[x] & 8: return arr
 
     arr = getAttacks(x)
 
     AttacksInTeamPossible = False
 
     for i in range(64):
-        if Board[i] & 1 and Board[i] & 2 and Board[x] & 2 and len(getAttacks(i)) > 0:
+        if Board[i] & 1 and Board[i] & 2 == Board[x] & 2 and len(getAttacks(i)) > 0:
             AttacksInTeamPossible = True
 
     if len(arr) == 0 and not AttacksInTeamPossible:
         arr = getNonAttacks(x)
     return arr
 
-
 def lclick(event):
     if(GetTurn() == False and PlayWithABot): return
     global selectedCell
-    global possibleTurns
-    global Board
-    selectedCell = (xmouse // CellSize) + (8 * (ymouse // CellSize))
+    global possibleMoves
+    selectedCell = (event.x // CellSize) + (8 * (event.y // CellSize))
     # highlighting of all possible moves
-    possibleTurns = getMoves(selectedCell)
-    for i in possibleTurns:
-        canvas.itemconfig(i, fill=color["blackSelected"])
-
-    # updating checkers position so that it follows the mouse
-    canvas.coords(checkers[selectedCell], xmouse, ymouse)
-
-
-def mouseDrag(event):
-    # updating checkers position so that it follows the mouse
-    # canvas.coords(checkers[selectedCell], xmouse, ymouse)
-    canvas.coords(checkers[selectedCell], event.x, event.y)
-
+    possibleMoves = getMoves(selectedCell)
+    for i in possibleMoves:
+        canvas.itemconfig(i + 1, fill=color["blackSelected"])
 
 def lclickRelease(event):
     if(GetTurn() == False and PlayWithABot): return
-    global possibleTurns
+    global possibleMoves
     global targetCell
-    global xmouse
-    global ymouse
-    for i in possibleTurns:
-        canvas.itemconfig(i, fill=color["black"])
-    targetCell = (xmouse // CellSize) + (8 * (ymouse // CellSize))
-    if targetCell in possibleTurns:
-        moveChecker(selectedCell, targetCell)
-    else:
-        moveChecker(selectedCell, selectedCell)
+    for i in possibleMoves:
+        canvas.itemconfig(i + 1, fill=color["black"])
+    targetCell = (event.x // CellSize) + (8 * (event.y // CellSize))
+    if targetCell in possibleMoves:
+        makeMove(selectedCell, targetCell)
+        syncVisuals()
 
+        # passes the turn to bot if the bot is enabled
+        if (PlayWithABot):
+            Bot()
 
 def GetTurn(): # returns true if it's whites turn, and false if it's blacks turn
     for i in range(64):
@@ -228,7 +227,6 @@ def GetTurn(): # returns true if it's whites turn, and false if it's blacks turn
             elif not Board[i] & 2 and Board[i] & 8:
                 return False
     return None
-
 
 def CountCheckers():
     global Board
@@ -242,121 +240,69 @@ def CountCheckers():
                 blackCount += 1
     return whiteCount, blackCount
 
+def makeMove(x1, x2):
+    movesHistory.append(Board)
+    if len(movesHistory) > depth: del movesHistory[0]
+    Board[x2] = Board[x1]
+    Board[x1] = 0
 
-def CountQueens():
-    global Board
-    blackCount = 0
-    whiteCount = 0
-    for i in range(64):
-        if Board[i] & 1:
-            if Board[i] & 2 and Board[i] & 4:
-                whiteCount += 1
-            elif not Board[i] & 2 and Board[i] & 4:
-                blackCount += 1
-    return whiteCount, blackCount
+    # queen conversion
+    if ((not Board[x2] & 2 and x2 < 8) or (Board[x2] & 2 and x2 > 55)) and not Board[x2] & 4:
+        Board[x2] += 4
 
-def moveChecker(x1, x2):
-    canvas.move(checkers[x1], x2 % 8 * CellSize, x2 // 8 * CellSize)
-    checkers[x2] = checkers[x1]
-    del checkers[x1]
+    # switching the turns
+    SetTurns(1 if Board[x2] & 2 else 2)
 
+    # killing a checker if there is one and keeping the turn only for the killer, if other kills are available
+    if abs(x2 - x1) > 9:
+        for i in range(4):
+            firstChecker = None
+            for j in range(1, getDistInDir(x1, direction[i])):
+                cell = x1 + direction[i] * j
+                if Board[cell] & 1 and Board[cell] & 2 != Board[x2] & 2 and firstChecker == None: firstChecker = cell
+                if cell == x2 and firstChecker != None:
+                    Board[firstChecker] = 0
+                    if len(getAttacks(x2)) > 0:
+                        SetTurns(0)
+                        Board[x2] += 8
+                    break
 
-"""def move(x1, x2):
-    global selected
-    global Board
-    global possibleTurns
-    selected = None
-    for i in range(CellSize // 4):
-        root.after(1)
-        canvas.move(checker.image, (endX - startX) * 4, (endY - startY) * 4)
-        root.update()
-    Board[endY][endX] = Board[startY][startX]
-    Board[startY][startX] = None
-    for i in possibleTurns:
-        canvas.itemconfig(i, fill=color["black"])
-
-    # switching all the turn values
-    SetTurns(checker.team == BLACK, checker.team == WHITE)
-
-    dy, dx = (endY - startY) // abs(endY - startY), (endX - startX) // abs(endX - startX)
-    i = 1
-    t1, t2 = startY + dy * i, startX + dx * i
-    while t1 != endY or t2 != endX:
-        t1, t2 = startY + dy * i, startX + dx * i
-        t = Board[t1][t2]
-        # print(t1,t2)
-        if t != None and t1 != endY and t2 != endX:
-            canvas.delete(t.tag)
-            Board[t1][t2] = None
-            root.update()
-            arr = attack(checker, endX, endY)
-            if(len(arr) > 0):
-                SetTurns()
-                checker.turn = True
-            break
-        i += 1
-
-    # checking if the move was to the 0th or the 7th row
-    if ((endY == 0 and checker.team == WHITE) or (endY == 7 and checker.team == BLACK)) and checker.king == False:
-        Board[endY][endX].king = True
-        t1 = Board[endY][endX].tag # fix this !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        canvas.delete(Board[endY][endX].tag)
-        Board[endY][endX].image = canvas.create_image(endX * CellSize, endY * CellSize, anchor=NW,
-                                                      image=images[2] if Board[endY][endX].team == WHITE else images[3]
-                                                      , tags = t1)
-        root.update()
-
+    # counting the checkers and checking if the game is over
     blackCount, whiteCount = CountCheckers()
-
-    if (blackCount == 0 and askyesno(message="White has won. Restart?")) or (whiteCount == 0 and askyesno(message="Black has won. Restart?")):
+    if (blackCount == 0 and askyesno(message="White has won. Restart?")) or (
+            whiteCount == 0 and askyesno(message="Black has won. Restart?")):
         init()
     elif blackCount == 0 or whiteCount == 0:
         exit(0)
 
-    if(PlayWithABot):
-        Bot()
-""" # legacy move function
-
+def unmakeMove():
+    pass
 
 def Bot():
     global Board
     if(GetTurn()): return
-    BestTurn = [None, None, None]
+    BestTurn = [None, None]
     MaxScore = 0
     # creating the array with all possible turns tt = (x + (k * j)) + (y + (k * i)) * 8 + 1
-    for i in range(8):
-        for j in range(8):
-            checker = Board[i][j]
-            turns = getMoves(checker, j, i)
-            if len(turns) > 0:
-                for k in turns:
-                    bufferBoard = Board
-                    whiteCount, blackCount = CountCheckers()
-                    whiteQueens, blackQueens = CountQueens()
-                    whiteCount += whiteQueens
-                    blackCount += blackQueens
-                    score = blackCount - whiteCount
-                    x, y = ((k - 1) % 8), ((k - 1) // 8)
+    for i in range(64):
+        if Board[i] == 0 or not Board[i] & 2: continue
+        turns = getMoves(i)
+        if len(turns) > 0:
+            for k in turns:
+                bufferBoard = Board
+                whiteCount, blackCount = CountCheckers()
+                score = blackCount - whiteCount
+                x, y = ((k - 1) % 8), ((k - 1) // 8)
 
-
-
-    """
-    item = random.choice(tuple(arr))
-    turn = random.choice(tuple(returnPossibleTurns(item[0], item[1], item[2])))
-    move(item[0], item[1], item[2], ((turn - 1) % 8), ((turn - 1) // 8))
-    """
-
-
-
+def Evaluate():
+    whites, blacks = CountCheckers()
+    return blacks - whites
 
 # main
 
 canvas.pack()
-root.bind("<Motion>", motion)
 root.bind("<Button-1>", lclick)
 root.bind("<ButtonRelease-1>", lclickRelease)
-root.bind("<B1-Motion>", mouseDrag)
 
 init()
-print(GetTurn())
 root.mainloop()
