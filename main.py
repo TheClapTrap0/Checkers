@@ -20,28 +20,24 @@ import time
 from tkinter.messagebox import askyesno
 import random
 
-root = Tk() # root for tkinter
+visualizeSearch = False # Toggle to visualize the search algorithm of the bot
+secondsAfterSync = .5 # the amount of seconds the game is paused for after each move
 
+root = Tk() # root for tkinter
 selectedCell = 0 # index of the selected cell in matrix
 targetCell = -1 # index of the targeted cell in matrix
 CellSize = 100 # the size of a cell in pixels
-
 PlayWithABot = False # determines whether black is a bot or a second player
-
 possibleMoves = [] # possible moves for the selected checker are stored here
-
-depth = 3 # the amount of turns the bot plans ahead
-movesHistory = [] # previous turns are stored here. Up to [depth] elements
-
+depth = 5 # the amount of turns the bot plans ahead !!!!! ALWAYS HAS TO BE ODD, OR THE BOT WILL PLAY IN FAVOR OF PLAYER
+queenWeight = 3 # the amount of pawns one queen is worth for the bot
+movesHistory = [0] # previous turns are stored here. Up to [depth] elements
 canvas = Canvas(root, width=CellSize * 8, height=CellSize * 8) # the canvas from tkinter
 Board = [] # the main board matrix
 checkers = {} # references to the images of the checkers are stored here
-
 images = [PhotoImage(file="res\\1b.gif"), PhotoImage(file="res\\1h.gif"),
               PhotoImage(file="res\\1bk.gif"), PhotoImage(file="res\\1hk.gif")] # array with the 4 images used for checkers
-
 direction = [-9, -7, 7, 9] # the 4 directions: up right, up left, down right, down left
-
 color = {
     "white": "#d6bea9",
     "black": "#5E544B",
@@ -49,6 +45,7 @@ color = {
     "blackSelected": "#5E546D"
 } # 4 colors used for tiles are stored here
 cell_colors = [color["white"], color["black"]] # only used in board init
+bestMove = [] # used in bot code
 
 def SetTurns(n): # 0 none turn, 1 white turn, 2 black turn
     for i in range(64):
@@ -59,7 +56,7 @@ def SetTurns(n): # 0 none turn, 1 white turn, 2 black turn
             Board[i] += 8 # equals: Board[i] &= 0b01111
 
 cellsInit = False # used to make sure that the tiles are only initiated once
-def init():
+def Init():
     global cellsInit
     global canvas
     global root
@@ -93,11 +90,11 @@ def init():
              0, 1, 0, 1, 0, 1, 0, 1,
              1, 0, 1, 0, 1, 0, 1, 0]
 
-    syncVisuals()
+    SyncVisuals()
 
     SetTurns(1)
 
-def syncVisuals():
+def SyncVisuals():
     for i in range(64):
         if i in checkers:
             canvas.delete(checkers[i])
@@ -113,7 +110,9 @@ def syncVisuals():
 
     root.update()
 
-def getDistInDir(x, dir):
+    time.sleep(secondsAfterSync)
+
+def GetDistInDir(x, dir):
     count = 1
     # only going on if the current tile is not on a border
     left, up, right, down = x % 8 != 0, x > 7, (x + 1) % 8 != 0, x < 56
@@ -139,7 +138,7 @@ def getDistInDir(x, dir):
             left, up, right, down = x % 8 != 0, x > 7, (x + 1) % 8 != 0, x < 56
     return count
 
-def getNonAttacks(x):
+def GetNonAttacks(x):
     arr = []
     for i in range(4):
 
@@ -149,7 +148,7 @@ def getNonAttacks(x):
         elif not Board[x] & 4 and not Board[x] & 2: # white
             if i > 1: continue # restricting the moving direction to up
 
-        for k in range(getDistInDir(x, direction[i])):
+        for k in range(GetDistInDir(x, direction[i])):
             target = Board[x + k * direction[i]]
 
             if target == 0:
@@ -161,11 +160,11 @@ def getNonAttacks(x):
                 break
     return arr
 
-def getAttacks(x):
+def GetAttacks(x):
     arr = []
     for i in range(4):
         checkerFound = False
-        for k in range(getDistInDir(x, direction[i])):
+        for k in range(GetDistInDir(x, direction[i])):
             target = Board[x + k * direction[i]]
             if target > 0 and k > 0:
                 if ((target & 2) == (Board[x] & 2)) or checkerFound: break
@@ -177,49 +176,69 @@ def getAttacks(x):
                 break
     return arr
 
-def getMoves(x):
+def GetMoves(x):
 
     arr = []
     if not Board[x] & 8: return arr
 
-    arr = getAttacks(x)
+    arr = GetAttacks(x)
 
     AttacksInTeamPossible = False
 
     for i in range(64):
-        if Board[i] & 1 and Board[i] & 2 == Board[x] & 2 and len(getAttacks(i)) > 0:
+        if Board[i] & 1 and Board[i] & 2 == Board[x] & 2 and len(GetAttacks(i)) > 0:
             AttacksInTeamPossible = True
 
     if len(arr) == 0 and not AttacksInTeamPossible:
-        arr = getNonAttacks(x)
+        arr = GetNonAttacks(x)
     return arr
 
-def lclick(event):
-    if(GetTurn() == False and PlayWithABot): return
+def Lclick(event):
+    if(GetTurn() == True and PlayWithABot): return
     global selectedCell
     global possibleMoves
     selectedCell = (event.x // CellSize) + (8 * (event.y // CellSize))
     # highlighting of all possible moves
-    possibleMoves = getMoves(selectedCell)
+    possibleMoves = GetMoves(selectedCell)
     for i in possibleMoves:
         canvas.itemconfig(i + 1, fill=color["blackSelected"])
 
-def lclickRelease(event):
-    if(GetTurn() == False and PlayWithABot): return
+def LclickRelease(event):
+    if(GetTurn() == True and PlayWithABot): return
     global possibleMoves
     global targetCell
     for i in possibleMoves:
         canvas.itemconfig(i + 1, fill=color["black"])
     targetCell = (event.x // CellSize) + (8 * (event.y // CellSize))
     if targetCell in possibleMoves:
-        makeMove(selectedCell, targetCell)
-        syncVisuals()
+        MakeMove(selectedCell, targetCell)
+        SyncVisuals()
+        EndTurn()
 
-        # passes the turn to bot if the bot is enabled
-        if (PlayWithABot):
-            Bot()
+def EndTurn():
+    # counting the checkers, checking if the game is over and passing the turn if necessary
 
-def GetTurn(): # returns true if it's whites turn, and false if it's blacks turn
+    # one of the teams has run out of checkers
+    blackCount, whiteCount = CountCheckers()
+    if (blackCount == 0 and askyesno(message="White has won. Restart?")) or (
+            whiteCount == 0 and askyesno(message="Black has won. Restart?")):
+        Init()
+    elif blackCount == 0 or whiteCount == 0:
+        exit(0)
+
+    # the team who's turn it has no available turns
+    if len(GetAllMoves()) == 0 and ((GetTurn() == False and askyesno(message="Black has won. Restart?")) or
+                                    (GetTurn() == True and askyesno(message="White has won. Restart?"))):
+        Init()
+    elif len(GetAllMoves()) == 0 and ((GetTurn() == False) or
+                                    (GetTurn() == True)):
+        exit(0)
+
+    # passes the turn to bot if the bot is enabled
+    if (PlayWithABot and GetTurn() == True):
+        Bot()
+
+def GetTurn(): # returns true if it's blacks turn, and false if it's whites turn
     for i in range(64):
         if Board[i] & 1:
             if Board[i] & 2 and Board[i] & 8:
@@ -228,7 +247,7 @@ def GetTurn(): # returns true if it's whites turn, and false if it's blacks turn
                 return False
     return None
 
-def CountCheckers():
+def CountPawns():
     global Board
     blackCount = 0
     whiteCount = 0
@@ -240,9 +259,32 @@ def CountCheckers():
                 blackCount += 1
     return whiteCount, blackCount
 
-def makeMove(x1, x2):
-    movesHistory.append(Board)
+def CountQueens():
+    global Board
+    blackCount = 0
+    whiteCount = 0
+    for i in range(64):
+        if Board[i] & 1 and Board[i] & 4:
+            if Board[i] & 2:
+                whiteCount += 1
+            else:
+                blackCount += 1
+    return whiteCount, blackCount
+
+def CountCheckers():
+    cpw, cpb = CountPawns()
+    cqw, cqb = CountQueens()
+    wc = cpw + cqw
+    bc = cpb + cqb
+    return wc, bc
+
+def MakeMove(x1, x2):
+    # saving the current board to the history to potentially unmake moves
+    # After 1.5 hours of pain: append takes the reference of the object, it doesn't create a copy like it would do in a normal programming language wtf
+    movesHistory.append(Board.copy()) # the .copy() is VERY important due to: see upper comment
     if len(movesHistory) > depth: del movesHistory[0]
+
+    # applying the actual changes to the board
     Board[x2] = Board[x1]
     Board[x1] = 0
 
@@ -257,52 +299,82 @@ def makeMove(x1, x2):
     if abs(x2 - x1) > 9:
         for i in range(4):
             firstChecker = None
-            for j in range(1, getDistInDir(x1, direction[i])):
+            for j in range(1, GetDistInDir(x1, direction[i])):
                 cell = x1 + direction[i] * j
                 if Board[cell] & 1 and Board[cell] & 2 != Board[x2] & 2 and firstChecker == None: firstChecker = cell
                 if cell == x2 and firstChecker != None:
                     Board[firstChecker] = 0
-                    if len(getAttacks(x2)) > 0:
+                    if len(GetAttacks(x2)) > 0:
                         SetTurns(0)
                         Board[x2] += 8
                     break
 
-    # counting the checkers and checking if the game is over
-    blackCount, whiteCount = CountCheckers()
-    if (blackCount == 0 and askyesno(message="White has won. Restart?")) or (
-            whiteCount == 0 and askyesno(message="Black has won. Restart?")):
-        init()
-    elif blackCount == 0 or whiteCount == 0:
-        exit(0)
+    # used for bot search visualization
+    if PlayWithABot and GetTurn() == True and visualizeSearch:
+        SyncVisuals()
+        time.sleep(.05)  # in seconds
 
-def unmakeMove():
-    pass
+def UnmakeMove():
+    global Board
+    Board = movesHistory.pop()
+
+    # used for bot search visualization
+    if PlayWithABot and GetTurn() == True and visualizeSearch:
+        SyncVisuals()
+        time.sleep(.005)  # in seconds
 
 def Bot():
-    global Board
-    if(GetTurn()): return
-    BestTurn = [None, None]
-    MaxScore = 0
-    # creating the array with all possible turns tt = (x + (k * j)) + (y + (k * i)) * 8 + 1
+    t = RecursiveSearch(depth)
+    MakeMove(bestMove[0], bestMove[1])
+    SyncVisuals()
+    EndTurn()
+
+def GetAllMoves(): # returns an array of all possible moves
+    arr = []
     for i in range(64):
-        if Board[i] == 0 or not Board[i] & 2: continue
-        turns = getMoves(i)
-        if len(turns) > 0:
-            for k in turns:
-                bufferBoard = Board
-                whiteCount, blackCount = CountCheckers()
-                score = blackCount - whiteCount
-                x, y = ((k - 1) % 8), ((k - 1) // 8)
+        if Board[i] & 1:
+            t = GetMoves(i)
+            if len(t) > 0:
+                for j in t:
+                    arr.append([i, j])
+    return arr
+
+def RecursiveSearch(d): # the moves that are made after killing a checker shouldn't be counted
+    global bestMove
+    if d == 0:
+        return Evaluate()
+
+    moves = GetAllMoves()
+    if len(moves) == 0: return 0
+
+    bestEvaluation = float("-inf")
+
+    for move in moves:
+        MakeMove(move[0], move[1])
+        t = -RecursiveSearch(d - 1) # minus sign here because each time the turn is passed to the opponent, and what's good for the opponent is bad for its opponent
+        if t > bestEvaluation:
+            bestEvaluation = t
+            if d == depth:
+                bestMove = move
+        UnmakeMove()
+
+    return bestEvaluation
 
 def Evaluate():
-    whites, blacks = CountCheckers()
+    whites, blacks = CountPawns()
+    wq, bq = CountQueens()
+    wq *= queenWeight; bq *= queenWeight
+    whites += wq; blacks += bq
     return blacks - whites
 
 # main
 
 canvas.pack()
-root.bind("<Button-1>", lclick)
-root.bind("<ButtonRelease-1>", lclickRelease)
 
-init()
+root.bind("<Button-1>", Lclick)
+root.bind("<ButtonRelease-1>", LclickRelease)
+
+
+
+Init()
 root.mainloop()
